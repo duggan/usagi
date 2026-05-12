@@ -1,0 +1,130 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag (e.g. v0.1.0). Required.'
+        required: true
+
+jobs:
+  release:
+    runs-on: macos-14
+    environment: release
+
+    permissions:
+      contents: write
+
+    env:
+      KEYCHAIN: build.keychain
+      KEYCHAIN_PWD: ${{ secrets.KEYCHAIN_PWD }}
+      MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+      MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+      SIGN_IDENTITY: ${{ secrets.SIGN_IDENTITY }}
+      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve tag and version
+        id: meta
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          fi
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "$VERSION" > VERSION
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+
+      - name: Import signing certificate
+        run: |
+          set -euo pipefail
+          echo "$MACOS_CERTIFICATE" | base64 --decode > /tmp/cert.p12
+          security create-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security default-keychain -s "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN"
+          security import /tmp/cert.p12 -k "$KEYCHAIN" \
+            -P "$MACOS_CERTIFICATE_PWD" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PWD" "$KEYCHAIN" >/dev/null
+          rm -f /tmp/cert.p12
+          security find-identity -v -p codesigning "$KEYCHAIN"
+
+      - name: Write App Store Connect API key
+        run: |
+          set -euo pipefail
+          mkdir -p ~/private_keys
+          chmod 700 ~/private_keys
+          echo "$APPLE_API_KEY" | base64 --decode > ~/private_keys/AuthKey_${APPLE_API_KEY_ID}.p8
+          chmod 600 ~/private_keys/AuthKey_${APPLE_API_KEY_ID}.p8
+
+      - name: Build, sign and notarize
+        env:
+          UNIVERSAL: '1'
+          DMG: '1'
+          NOTARIZE_KEY: ${{ github.workspace }}/../private_keys/AuthKey_${{ secrets.APPLE_API_KEY_ID }}.p8
+          NOTARIZE_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          NOTARIZE_ISSUER: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: |
+          # NOTARIZE_KEY in build.sh expects an absolute path; rewrite to ~/.
+          export NOTARIZE_KEY="$HOME/private_keys/AuthKey_${APPLE_API_KEY_ID}.p8"
+          ./build.sh
+
+      - name: Compute SHA256
+        id: sha
+        run: |
+          DMG="bin/Usagi-${{ steps.meta.outputs.version }}.dmg"
+          SHA="$(shasum -a 256 "$DMG" | awk '{print $1}')"
+          echo "dmg=$DMG" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "$SHA  $(basename "$DMG")" > "bin/SHA256SUMS"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          DMG: ${{ steps.sha.outputs.dmg }}
+          SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          set -euo pipefail
+          BODY=$(cat <<EOF
+          ## Install
+
+          \`\`\`
+          brew tap rossduggan/usagi
+          brew install --cask usagi
+          \`\`\`
+
+          Or download \`Usagi-${VERSION}.dmg\` below and drag to Applications.
+
+          ## SHA256
+
+          \`\`\`
+          ${SHA}  Usagi-${VERSION}.dmg
+          \`\`\`
+          EOF
+          )
+          gh release create "$TAG" "$DMG" "bin/SHA256SUMS" \
+            --title "usagi $VERSION" \
+            --notes "$BODY"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          security delete-keychain "$KEYCHAIN" 2>/dev/null || true
+          rm -rf ~/private_keys

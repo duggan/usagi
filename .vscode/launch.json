@@ -1,0 +1,24 @@
+{
+  "configurations": [
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:usagi}",
+      "name": "Debug Usagi",
+      "target": "Usagi",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug Usagi"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:usagi}",
+      "name": "Release Usagi",
+      "target": "Usagi",
+      "configuration": "release",
+      "preLaunchTask": "swift: Build Release Usagi"
+    }
+  ]
+}
