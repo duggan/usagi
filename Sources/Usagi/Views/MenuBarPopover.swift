@@ -36,10 +36,12 @@ struct MenuBarPopover: View {
 			if let snapshot = appState.snapshot {
 				UsageBarsView(snapshot: snapshot, overage: appState.overage, showPercent: appState.showPercentInBars)
 			}
-			Text("usagi \(AppVersion.short)" + (appState.lastRefresh.map { " · updated \($0.relativeShort())" } ?? ""))
-				.font(.system(size: 10))
-				.foregroundStyle(Palette.dim)
-				.frame(maxWidth: .infinity, alignment: .trailing)
+			if let last = appState.lastRefresh {
+				Text("Updated \(last.relativeShort())")
+					.font(.system(size: 10))
+					.foregroundStyle(Palette.dim)
+					.frame(maxWidth: .infinity, alignment: .trailing)
+			}
 		}
 		.padding(.horizontal, 14)
 		.padding(.vertical, 12)
