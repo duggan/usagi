@@ -12,6 +12,9 @@ set -euo pipefail
 #   NOTARIZE_KEY=...     — alternative: path to App Store Connect .p8 key
 #   NOTARIZE_KEY_ID=...  — App Store Connect key ID (used with NOTARIZE_KEY)
 #   NOTARIZE_ISSUER=...  — App Store Connect issuer ID (used with NOTARIZE_KEY)
+#
+# When notarization credentials are present, the .app *and* the DMG are each
+# notarized and stapled, so both pass Gatekeeper even offline.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="$SCRIPT_DIR/bin"
@@ -47,9 +50,39 @@ if [ -f "$SCRIPT_DIR/AppIcon.icns" ]; then
 	cp "$SCRIPT_DIR/AppIcon.icns" "$RESOURCES_DIR/"
 fi
 
+# notarytool credentials: either a stored keychain profile, or an App Store
+# Connect API key (.p8 + key id + issuer).
+have_notary_creds() {
+	[ -n "${NOTARIZE_PROFILE:-}" ] || \
+		{ [ -n "${NOTARIZE_KEY:-}" ] && [ -n "${NOTARIZE_KEY_ID:-}" ] && [ -n "${NOTARIZE_ISSUER:-}" ]; }
+}
+# Submit $1 to the notary service and wait. Exits non-zero (→ set -e abort) if
+# the submission is rejected or errors.
+notarize() {
+	if [ -n "${NOTARIZE_PROFILE:-}" ]; then
+		xcrun notarytool submit "$1" --keychain-profile "$NOTARIZE_PROFILE" --wait
+	else
+		xcrun notarytool submit "$1" \
+			--key "$NOTARIZE_KEY" --key-id "$NOTARIZE_KEY_ID" --issuer "$NOTARIZE_ISSUER" --wait
+	fi
+}
+
 if [ -n "${SIGN_IDENTITY:-}" ]; then
 	echo "Signing with: $SIGN_IDENTITY"
 	codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP_DIR"
+
+	# Notarize the .app and staple the ticket into the bundle, so the extracted
+	# app passes Gatekeeper even when offline (the DMG is notarized separately
+	# below). notarytool needs an archive, not a bare bundle.
+	if have_notary_creds; then
+		echo "Notarizing $APP_DIR..."
+		APP_ZIP="/tmp/Usagi-app-$$.zip"
+		ditto -c -k --keepParent "$APP_DIR" "$APP_ZIP"
+		notarize "$APP_ZIP"
+		rm -f "$APP_ZIP"
+		xcrun stapler staple "$APP_DIR"
+		echo "Notarized and stapled $APP_DIR"
+	fi
 else
 	echo "Ad-hoc signing (set SIGN_IDENTITY for Developer ID signing)"
 	codesign --force --deep -s - "$APP_DIR"
@@ -119,18 +152,11 @@ if [ "${DMG:-}" = "1" ]; then
 		codesign --force --sign "$SIGN_IDENTITY" "$DMG_PATH"
 	fi
 
-	if [ -n "${NOTARIZE_PROFILE:-}" ]; then
-		echo "Submitting for notarization (keychain profile)..."
-		xcrun notarytool submit "$DMG_PATH" --keychain-profile "$NOTARIZE_PROFILE" --wait
+	if have_notary_creds; then
+		echo "Notarizing $DMG_PATH..."
+		notarize "$DMG_PATH"
 		xcrun stapler staple "$DMG_PATH"
-	elif [ -n "${NOTARIZE_KEY:-}" ] && [ -n "${NOTARIZE_KEY_ID:-}" ] && [ -n "${NOTARIZE_ISSUER:-}" ]; then
-		echo "Submitting for notarization (App Store Connect API key)..."
-		xcrun notarytool submit "$DMG_PATH" \
-			--key "$NOTARIZE_KEY" \
-			--key-id "$NOTARIZE_KEY_ID" \
-			--issuer "$NOTARIZE_ISSUER" \
-			--wait
-		xcrun stapler staple "$DMG_PATH"
+		echo "Notarized and stapled $DMG_PATH"
 	fi
 
 	echo "Created $DMG_PATH"
