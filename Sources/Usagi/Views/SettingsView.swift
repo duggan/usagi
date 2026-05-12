@@ -21,7 +21,7 @@ struct SettingsView: View {
 			}
 
 			Section("Display") {
-				Toggle("Show percentage in usage bars", isOn: $appState.showPercentInBars)
+				Toggle("Show percentage in usage bar", isOn: $appState.showPercentInBars)
 			}
 
 			Section("Startup") {
