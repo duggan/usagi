@@ -26,47 +26,6 @@ struct UsageRow: View {
 	}
 }
 
-/// A full-width, menu-style action row: title on the left, an optional dimmed
-/// keyboard-shortcut hint on the right, with a subtle highlight on hover.
-struct MenuRow: View {
-	let title: String
-	var shortcut: String? = nil
-	let action: () -> Void
-
-	@State private var hovering = false
-
-	init(_ title: String, shortcut: String? = nil, action: @escaping () -> Void) {
-		self.title = title
-		self.shortcut = shortcut
-		self.action = action
-	}
-
-	var body: some View {
-		Button(action: action) {
-			HStack(spacing: 8) {
-				Text(title)
-					.font(.system(size: 13))
-				Spacer(minLength: 8)
-				if let shortcut {
-					Text(shortcut)
-						.font(.system(size: 12).monospacedDigit())
-						.foregroundStyle(Palette.dim)
-				}
-			}
-			.padding(.horizontal, 10)
-			.padding(.vertical, 5)
-			.frame(maxWidth: .infinity, alignment: .leading)
-			.contentShape(Rectangle())
-			.background(
-				RoundedRectangle(cornerRadius: 5)
-					.fill(Color.primary.opacity(hovering ? 0.09 : 0))
-			)
-		}
-		.buttonStyle(.plain)
-		.onHover { hovering = $0 }
-	}
-}
-
 struct ProgressBar: View {
 	let fraction: Double
 	let tint: Color

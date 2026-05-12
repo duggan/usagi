@@ -1,102 +1,63 @@
 import SwiftUI
 
+/// The header view at the top of the status-item menu: the usage bars when
+/// signed in, or a short explanatory message / spinner otherwise. The actual
+/// actions (Settings, Sign in/out, Quit) are native `NSMenuItem`s built by the
+/// app delegate, so they get the system menu's instant, native behaviour.
 struct MenuBarPopover: View {
 	let appState: AppState
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 0) {
-			content
+		Group {
+			switch appState.phase {
+			case .bootstrapping, .loading:
+				ProgressView()
+					.controlSize(.small)
+					.frame(maxWidth: .infinity)
+					.padding(.vertical, 18)
+			case .signedOut:
+				message(
+					title: "Not signed in",
+					body: "Sign in to Claude.ai to track your session, weekly, and extra-usage limits.",
+					bodyColor: Palette.dim
+				)
+			case .ready:
+				ready
+			case .error(let text):
+				message(title: "Couldn't load usage", body: text, bodyColor: .red)
+			}
 		}
-		.frame(width: 300)
+		.frame(width: 280)
 	}
 
 	@ViewBuilder
-	private var content: some View {
-		switch appState.phase {
-		case .bootstrapping, .loading:
-			loadingView
-		case .signedOut:
-			LoginView(appState: appState)
-		case .ready:
-			readyView
-		case .error(let message):
-			errorView(message: message)
-		}
-	}
-
-	private var loadingView: some View {
-		VStack {
-			Spacer()
-			ProgressView()
-			Spacer()
-		}
-		.frame(minHeight: 120)
-	}
-
-	@ViewBuilder
-	private var readyView: some View {
-		VStack(alignment: .leading, spacing: 0) {
+	private var ready: some View {
+		VStack(alignment: .leading, spacing: 10) {
 			if let snapshot = appState.snapshot {
 				UsageBarsView(snapshot: snapshot, overage: appState.overage)
-					.padding(.horizontal, 14)
-					.padding(.top, 14)
 			}
-
-			divider
-			footerRows
-
 			if let last = appState.lastRefresh {
 				Text("Updated \(last.relativeShort())")
 					.font(.system(size: 10))
 					.foregroundStyle(Palette.dim)
 					.frame(maxWidth: .infinity, alignment: .trailing)
-					.padding(.horizontal, 14)
-					.padding(.top, 4)
-					.padding(.bottom, 8)
 			}
 		}
+		.padding(.horizontal, 14)
+		.padding(.vertical, 12)
 	}
 
-	private func errorView(message: String) -> some View {
-		VStack(alignment: .leading, spacing: 8) {
-			Text(message)
-				.font(.system(size: 12))
-				.foregroundStyle(.red)
-				.padding(.horizontal, 14)
-				.padding(.top, 14)
-			MenuRow("Try again") {
-				Task { await appState.refresh() }
-			}
-			.padding(.horizontal, 4)
-
-			divider
-			footerRows
-				.padding(.bottom, 8)
+	private func message(title: String, body: String, bodyColor: Color) -> some View {
+		VStack(alignment: .leading, spacing: 4) {
+			Text(title)
+				.font(.system(size: 13, weight: .semibold))
+			Text(body)
+				.font(.system(size: 11))
+				.foregroundStyle(bodyColor)
+				.fixedSize(horizontal: false, vertical: true)
 		}
-	}
-
-	private var divider: some View {
-		Divider()
-			.padding(.horizontal, 6)
-			.padding(.vertical, 8)
-	}
-
-	private var footerRows: some View {
-		VStack(alignment: .leading, spacing: 0) {
-			MenuRow("Settings…", shortcut: "⌘,") {
-				NotificationCenter.default.post(name: .openSettings, object: nil)
-			}
-			.keyboardShortcut(",", modifiers: .command)
-
-			MenuRow("Sign out") {
-				appState.signOut()
-			}
-
-			MenuRow("Quit usagi", shortcut: "⌘Q") {
-				NSApplication.shared.terminate(nil)
-			}
-			.keyboardShortcut("q", modifiers: .command)
-		}
-		.padding(.horizontal, 4)
+		.frame(maxWidth: .infinity, alignment: .leading)
+		.padding(.horizontal, 14)
+		.padding(.vertical, 12)
 	}
 }

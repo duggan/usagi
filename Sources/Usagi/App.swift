@@ -7,7 +7,7 @@ struct UsagiApp: App {
 	@NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
 	var body: some Scene {
-		// All UI is driven by the AppDelegate's NSStatusItem + NSPopover.
+		// All UI is driven by the AppDelegate's NSStatusItem + NSMenu.
 		Settings { EmptyView() }
 	}
 }
@@ -15,7 +15,7 @@ struct UsagiApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
 	private var statusItem: NSStatusItem!
-	private var popover: NSPopover!
+	private var menu: NSMenu!
 	private var appState: AppState!
 	private var settingsWindow: NSWindow?
 	private var redrawTimer: Timer?
@@ -30,24 +30,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			await appState.load()
 		}
 
-		popover = NSPopover()
-		popover.behavior = .transient
-		popover.animates = false
-		let host = NSHostingController(rootView: MenuBarPopover(appState: appState))
-		host.sizingOptions = .preferredContentSize
-		popover.contentViewController = host
-		// Load and lay out the SwiftUI view now, so the first click shows it
-		// instantly and at the right size (no appear-then-resize flicker).
-		host.view.layoutSubtreeIfNeeded()
+		// A real NSMenu — opens instantly with native highlighting, key
+		// equivalents, and dismissal. Its first item hosts the SwiftUI usage
+		// bars; the rest are standard menu items, rebuilt per state in
+		// menuNeedsUpdate(_:).
+		menu = NSMenu()
+		menu.delegate = self
+		menu.autoenablesItems = false
 
 		statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-		if let button = statusItem.button {
-			button.image = makeStatusImage(usage: nil, remaining: nil, percent: nil, error: false)
-			button.imagePosition = .imageLeft
-			button.font = NSFont.monospacedSystemFont(ofSize: NSFont.systemFontSize - 1, weight: .regular)
-			button.action = #selector(togglePopover)
-			button.target = self
-		}
+		statusItem.button?.image = makeStatusImage(usage: nil, remaining: nil, percent: nil, error: false)
+		statusItem.menu = menu
 
 		// Update the menu bar whenever AppState changes...
 		observeMenuBar()
@@ -67,26 +60,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		)
 	}
 
-	@objc private func togglePopover() {
-		guard let button = statusItem.button else { return }
-		if popover.isShown {
-			popover.performClose(nil)
-		} else {
-			// Size the popover to its content before showing, so it appears at the
-			// final size with no resize transition.
-			if let view = popover.contentViewController?.view {
-				view.layoutSubtreeIfNeeded()
-				popover.contentSize = view.fittingSize
-			}
-			popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-			popover.contentViewController?.view.window?.makeKey()
-			Task { await appState.refresh() }
-		}
+	// MARK: - Menu
+
+	private func actionItem(_ title: String, _ selector: Selector, key: String = "") -> NSMenuItem {
+		let item = NSMenuItem(title: title, action: selector, keyEquivalent: key)
+		item.target = self
+		return item
 	}
 
-	@objc private func handleOpenSettings() {
-		if popover.isShown { popover.performClose(nil) }
+	@objc private func handleSignIn() { appState.presentSignIn() }
+	@objc private func handleSignOut() { appState.signOut() }
+	@objc private func handleRetry() { Task { await appState.refresh() } }
+	@objc private func handleQuit() { NSApplication.shared.terminate(nil) }
 
+	@objc private func handleOpenSettings() {
 		if let settingsWindow {
 			settingsWindow.makeKeyAndOrderFront(nil)
 			NSApp.activate(ignoringOtherApps: true)
@@ -392,6 +379,44 @@ private enum SVGPath {
 			}
 		}
 		return path
+	}
+}
+
+extension AppDelegate: NSMenuDelegate {
+	func menuNeedsUpdate(_ menu: NSMenu) {
+		menu.removeAllItems()
+
+		// The usage bars (or a sign-in prompt / spinner / error) as a
+		// non-interactive header. A fresh hosting view each time keeps it simple;
+		// the SwiftUI content has no controls of its own.
+		let host = NSHostingView(rootView: MenuBarPopover(appState: appState))
+		host.layoutSubtreeIfNeeded()
+		host.frame.size = host.fittingSize
+		let header = NSMenuItem()
+		header.view = host
+		header.isEnabled = false
+		menu.addItem(header)
+
+		menu.addItem(.separator())
+		menu.addItem(actionItem("Settings…", #selector(handleOpenSettings), key: ","))
+
+		switch appState.phase {
+		case .signedOut:
+			menu.addItem(actionItem("Sign In…", #selector(handleSignIn)))
+		case .ready:
+			menu.addItem(actionItem("Sign Out", #selector(handleSignOut)))
+		case .error:
+			menu.addItem(actionItem("Try Again", #selector(handleRetry)))
+			menu.addItem(actionItem("Sign Out", #selector(handleSignOut)))
+		case .bootstrapping, .loading:
+			break
+		}
+
+		menu.addItem(actionItem("Quit usagi", #selector(handleQuit), key: "q"))
+	}
+
+	func menuWillOpen(_ menu: NSMenu) {
+		Task { await appState.refresh() }
 	}
 }
 
