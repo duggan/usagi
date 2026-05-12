@@ -51,7 +51,12 @@ actor ClaudeAPIClient {
 
 	init(session: URLSession = .shared) {
 		self.session = session
+		self.decoder = Self.makeDecoder()
+	}
 
+	/// The decoder used for every endpoint — ISO8601 with or without fractional
+	/// seconds. Exposed so tests can decode fixtures through the real config.
+	static func makeDecoder() -> JSONDecoder {
 		let decoder = JSONDecoder()
 		decoder.dateDecodingStrategy = .custom { decoder in
 			let container = try decoder.singleValueContainer()
@@ -68,7 +73,7 @@ actor ClaudeAPIClient {
 			throw DecodingError.dataCorruptedError(in: container,
 				debugDescription: "Unparseable ISO8601 date: \(str)")
 		}
-		self.decoder = decoder
+		return decoder
 	}
 
 	// MARK: - Endpoints

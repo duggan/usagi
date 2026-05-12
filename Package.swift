@@ -10,5 +10,10 @@ let package = Package(
 			path: "Sources/Usagi",
 			exclude: ["Info.plist"]
 		),
+		.testTarget(
+			name: "UsagiTests",
+			dependencies: ["Usagi"],
+			path: "Tests/UsagiTests"
+		),
 	]
 )

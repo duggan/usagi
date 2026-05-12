@@ -1,0 +1,15 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    # macOS 15 SDK / Xcode 16 — see release.yml.
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+      - run: swift build -c release
+      - run: swift test

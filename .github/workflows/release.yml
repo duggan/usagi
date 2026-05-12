@@ -52,6 +52,9 @@ jobs:
           xcodebuild -version
           swift --version
 
+      - name: Run tests
+        run: swift test
+
       - name: Import signing certificate
         run: |
           set -euo pipefail
