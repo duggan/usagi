@@ -5,6 +5,7 @@ struct UsageRow: View {
 	let utilization: Double
 	let detail: String?
 	let tint: Color
+	var showPercent: Bool = true
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 4) {
@@ -12,9 +13,11 @@ struct UsageRow: View {
 				Text(label)
 					.font(.system(size: 12, weight: .medium))
 				Spacer()
-				Text("\(Int(utilization.rounded()))%")
-					.font(.system(size: 12, weight: .semibold).monospacedDigit())
-					.foregroundStyle(tint)
+				if showPercent {
+					Text("\(Int(utilization.rounded()))%")
+						.font(.system(size: 12, weight: .semibold).monospacedDigit())
+						.foregroundStyle(tint)
+				}
 			}
 			ProgressBar(fraction: utilization / 100, tint: tint)
 			if let detail {

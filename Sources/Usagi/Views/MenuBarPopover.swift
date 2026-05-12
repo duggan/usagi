@@ -34,7 +34,7 @@ struct MenuBarPopover: View {
 	private var ready: some View {
 		VStack(alignment: .leading, spacing: 10) {
 			if let snapshot = appState.snapshot {
-				UsageBarsView(snapshot: snapshot, overage: appState.overage)
+				UsageBarsView(snapshot: snapshot, overage: appState.overage, showPercent: appState.showPercentInBars)
 			}
 			if let last = appState.lastRefresh {
 				Text("Updated \(last.relativeShort())")

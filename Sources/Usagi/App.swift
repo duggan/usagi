@@ -84,7 +84,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		let window = NSWindow(contentViewController: host)
 		window.title = "usagi Settings"
 		window.styleMask = [.titled, .closable]
-		window.setContentSize(NSSize(width: 440, height: 420))
+		window.setContentSize(NSSize(width: 460, height: 620))
 		window.center()
 		window.isReleasedWhenClosed = false
 		window.delegate = self

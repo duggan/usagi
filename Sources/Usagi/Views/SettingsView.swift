@@ -2,53 +2,52 @@ import SwiftUI
 import ServiceManagement
 
 struct SettingsView: View {
-	let appState: AppState
+	@Bindable var appState: AppState
 	@State private var launchAtLogin: Bool = SMAppService.mainApp.status == .enabled
 
 	var body: some View {
 		Form {
-			Section("Refresh") {
-				HStack {
-					Slider(value: Binding(
-						get: { appState.refreshInterval },
-						set: { appState.refreshInterval = $0 }
-					), in: 15...300, step: 5)
-					Text("\(Int(appState.refreshInterval))s")
-						.font(.system(size: 12).monospacedDigit())
-						.frame(width: 44, alignment: .trailing)
+			Section {
+				Picker("Interval", selection: $appState.refreshInterval) {
+					Text("5s").tag(TimeInterval(5))
+					Text("30s").tag(TimeInterval(30))
+					Text("5m").tag(TimeInterval(300))
 				}
+				.pickerStyle(.segmented)
+			} header: {
+				Text("Refresh")
+			} footer: {
+				Text("How often usage data is fetched from Claude.ai.")
+			}
+
+			Section("Display") {
+				Toggle("Show percentage in usage bars", isOn: $appState.showPercentInBars)
 			}
 
 			Section("Startup") {
 				Toggle("Launch at login", isOn: $launchAtLogin)
-					.onChange(of: launchAtLogin) { _, new in
-						setLaunchAtLogin(new)
-					}
+					.onChange(of: launchAtLogin) { _, new in setLaunchAtLogin(new) }
 			}
 
 			Section("Account") {
-				Button("Sign out") { appState.signOut() }
 				if let org = appState.organization {
-					Text("Signed in as \(org.name)")
-						.font(.system(size: 11))
-						.foregroundStyle(Palette.dim)
+					LabeledContent("Signed in as", value: org.name)
+					Button("Sign Out") { appState.signOut() }
+				} else {
+					LabeledContent("Status", value: "Not signed in")
+					Button("Sign In…") { appState.presentSignIn() }
 				}
 			}
 
 			Section("About") {
-				HStack {
-					Text("Version")
-					Spacer()
-					Text(AppVersion.short)
-						.foregroundStyle(Palette.dim)
-				}
+				LabeledContent("Version", value: AppVersion.short)
 				Link("github.com/rossduggan/usagi",
 				     destination: URL(string: "https://github.com/rossduggan/usagi")!)
-					.font(.system(size: 11))
 			}
 		}
 		.formStyle(.grouped)
-		.frame(width: 440, height: 420)
+		.scrollDisabled(true)
+		.frame(width: 460, height: 620)
 	}
 
 	private func setLaunchAtLogin(_ enabled: Bool) {

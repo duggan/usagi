@@ -27,6 +27,11 @@ final class AppState {
 		}
 	}
 
+	/// Whether each usage bar in the dropdown shows a "42%" label.
+	var showPercentInBars: Bool = true {
+		didSet { UserDefaults.standard.set(showPercentInBars, forKey: Self.showPercentKey) }
+	}
+
 	/// Notifies observers when the value the menu bar shows might have changed.
 	/// SwiftUI views observe state directly; the AppDelegate uses this to redraw the status item.
 	var menuBarTick: Int = 0
@@ -43,7 +48,11 @@ final class AppState {
 		self.api = api
 		self.auth = auth ?? AuthCoordinator()
 		if let stored = UserDefaults.standard.object(forKey: Self.refreshIntervalKey) as? TimeInterval {
-			self.refreshInterval = max(15, min(300, stored))
+			let allowed: [TimeInterval] = [5, 30, 300]
+			self.refreshInterval = allowed.min(by: { abs($0 - stored) < abs($1 - stored) }) ?? 30
+		}
+		if UserDefaults.standard.object(forKey: Self.showPercentKey) != nil {
+			self.showPercentInBars = UserDefaults.standard.bool(forKey: Self.showPercentKey)
 		}
 		self.refresher = UsageRefresher { [weak self] in
 			await self?.refresh()
@@ -177,4 +186,5 @@ final class AppState {
 	// MARK: - Storage keys
 
 	private static let refreshIntervalKey = "ie.duggan.usagi.refreshInterval"
+	private static let showPercentKey = "ie.duggan.usagi.showPercentInBars"
 }

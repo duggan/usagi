@@ -3,6 +3,7 @@ import SwiftUI
 struct UsageBarsView: View {
 	let snapshot: UsageSnapshot
 	let overage: OverageSpend?
+	var showPercent: Bool = true
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 12) {
@@ -11,7 +12,8 @@ struct UsageBarsView: View {
 					label: "5-hour session",
 					utilization: session.utilization,
 					detail: resetDetail(session.resetsAt, prefix: "Resets"),
-					tint: Palette.session
+					tint: Palette.session,
+					showPercent: showPercent
 				)
 			}
 
@@ -20,7 +22,8 @@ struct UsageBarsView: View {
 					label: "Weekly",
 					utilization: weekly.utilization,
 					detail: resetDetail(weekly.resetsAt, prefix: "Resets"),
-					tint: Palette.weekly
+					tint: Palette.weekly,
+					showPercent: showPercent
 				)
 			}
 
