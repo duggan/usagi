@@ -106,7 +106,7 @@ jobs:
           ## Install
 
           \`\`\`
-          brew tap rossduggan/usagi
+          brew tap duggan/usagi
           brew install --cask usagi
           \`\`\`
 

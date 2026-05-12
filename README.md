@@ -7,11 +7,11 @@ usagi shows your weekly Claude.ai usage as a small bar in the menu bar (e.g. `â–
 ## Install
 
 ```
-brew tap rossduggan/usagi
+brew tap duggan/usagi
 brew install --cask usagi
 ```
 
-Or grab the DMG from [Releases](https://github.com/rossduggan/usagi/releases/latest) and drag to Applications.
+Or grab the DMG from [Releases](https://github.com/duggan/usagi/releases/latest) and drag to Applications.
 
 Sign in with your Claude account on first launch â€” the session token lives in your macOS Keychain and never leaves the machine.
 

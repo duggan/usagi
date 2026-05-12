@@ -41,8 +41,8 @@ struct SettingsView: View {
 
 			Section("About") {
 				LabeledContent("Version", value: AppVersion.short)
-				Link("github.com/rossduggan/usagi",
-				     destination: URL(string: "https://github.com/rossduggan/usagi")!)
+				Link("github.com/duggan/usagi",
+				     destination: URL(string: "https://github.com/duggan/usagi")!)
 			}
 		}
 		.formStyle(.grouped)

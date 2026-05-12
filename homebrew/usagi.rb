@@ -5,10 +5,10 @@ cask "usagi" do
   version "0.1.0"
   sha256 "REPLACE_WITH_RELEASE_SHA256"
 
-  url "https://github.com/rossduggan/usagi/releases/download/v#{version}/Usagi-#{version}.dmg"
+  url "https://github.com/duggan/usagi/releases/download/v#{version}/Usagi-#{version}.dmg"
   name "usagi"
   desc "Minimalist Claude usage tracker for the macOS menu bar"
-  homepage "https://github.com/rossduggan/usagi"
+  homepage "https://github.com/duggan/usagi"
 
   depends_on macos: ">= :sonoma"
 
