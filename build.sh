@@ -113,7 +113,8 @@ if [ "${DMG:-}" = "1" ]; then
 		cp "$SCRIPT_DIR/dmg-background.png" "$MOUNT_POINT/.background/background.png"
 	fi
 
-	osascript <<-APPLESCRIPT
+	# Cosmetic window layout — don't fail the build if Finder automation is flaky.
+	osascript <<-APPLESCRIPT || echo "warning: DMG window styling failed (non-fatal)"
 	tell application "Finder"
 		tell disk "$VOL_NAME"
 			open
@@ -143,7 +144,14 @@ if [ "${DMG:-}" = "1" ]; then
 	fi
 
 	sync
-	hdiutil detach "$MOUNT_POINT" -quiet
+	# Finder may briefly keep the volume busy after the styling pass; retry the
+	# detach a few times, then force it.
+	detached=
+	for _ in 1 2 3 4 5 6; do
+		if hdiutil detach "$MOUNT_POINT" -quiet 2>/dev/null; then detached=1; break; fi
+		sleep 2
+	done
+	[ -n "$detached" ] || hdiutil detach "$MOUNT_POINT" -force
 	rm -f "$DMG_PATH"
 	hdiutil convert "$TEMP_DMG" -format UDZO -imagekey zlib-level=9 -o "$DMG_PATH" -quiet
 	rm -f "$TEMP_DMG"
