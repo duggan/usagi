@@ -62,16 +62,17 @@ Tag a commit `vX.Y.Z` and push. The `release` GitHub Actions workflow signs, not
    | `APPLE_API_KEY` | base64 of the `.p8` |
    | `APPLE_API_KEY_ID` | 10-character Key ID from App Store Connect |
    | `APPLE_API_ISSUER_ID` | the Issuer ID UUID at the top of the Keys page |
+   | `HOMEBREW_TAP_TOKEN` | *optional* — fine-grained PAT with **Contents: read & write** on `duggan/homebrew-usagi`; enables auto-bumping the cask. Omit it and the release just skips that step. |
 
 The temporary keychain is deleted on every job exit (success or failure), so secrets never persist on the runner.
 
-### Updating the Homebrew tap
+### Homebrew tap
 
-After a release, edit `homebrew-usagi/Casks/usagi.rb` (separate tap repo) with the new version and the SHA256 from the release notes, then push.
+The cask lives in [`duggan/homebrew-usagi`](https://github.com/duggan/homebrew-usagi) (`Casks/usagi.rb`). Its source of truth is [`homebrew/usagi.rb`](homebrew/usagi.rb) in this repo — the release workflow substitutes the new `version` + `sha256` and pushes the result to the tap, so a release auto-publishes the cask. Edit `homebrew/usagi.rb` here for anything else (zap paths, deps, …).
 
 ## Architecture
 
-- **App.swift** — `AppDelegate` owning the `NSStatusItem` and `NSPopover`. The status item title is updated reactively via `withObservationTracking` whenever `AppState` changes.
+- **App.swift** — `AppDelegate` owning the `NSStatusItem` and its `NSMenu` (the first item hosts the SwiftUI usage bars; the rest are standard menu items rebuilt per state). The status-item image is redrawn reactively via `withObservationTracking` whenever `AppState` changes.
 - **ViewModels/AppState.swift** — `@Observable` root state: phase, snapshot, overage, organization, refresh interval. Coordinates load → refresh → sign-out lifecycle.
 - **Services/ClaudeAPIClient.swift** — `URLSession`-backed actor calling `claude.ai/api/organizations`, `/usage`, `/overage_spend_limit`. Sends `Cookie: sessionKey=...`.
 - **Services/AuthCoordinator.swift** — `WKWebView` window pointed at `claude.ai/login`; observes the cookie store and persists the captured `sessionKey` to the Keychain.

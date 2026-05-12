@@ -128,6 +128,33 @@ jobs:
             --title "usagi $VERSION" \
             --notes "$BODY"
 
+      - name: Bump Homebrew tap
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TAP_TOKEN:-}" ]; then
+            echo "HOMEBREW_TAP_TOKEN not set — skipping Homebrew tap bump."
+            exit 0
+          fi
+          git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/duggan/homebrew-usagi.git" tap
+          sed -E \
+            -e "s/^( *version )\"[^\"]*\"/\1\"${VERSION}\"/" \
+            -e "s/^( *sha256 )\"[^\"]*\"/\1\"${SHA}\"/" \
+            homebrew/usagi.rb > tap/Casks/usagi.rb
+          cd tap
+          if git diff --quiet -- Casks/usagi.rb; then
+            echo "Cask already at ${VERSION}."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add Casks/usagi.rb
+            git commit -m "usagi ${VERSION}"
+            git push
+          fi
+
       - name: Cleanup
         if: always()
         run: |
