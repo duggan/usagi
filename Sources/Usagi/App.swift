@@ -142,28 +142,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		}
 	}
 
-	/// Colour-codes the usage bar: green while there's plenty left, ramping
-	/// through yellow and orange to red as the session quota fills.
-	private static func usageColor(_ fraction: Double) -> NSColor {
-		switch fraction {
-		case ..<0.5:  return .systemGreen
-		case ..<0.75: return .systemYellow
-		case ..<0.9:  return .systemOrange
-		default:      return .systemRed
-		}
-	}
-
-	/// The countdown dial's colour: neutral while there's comfortably time left in
-	/// the 5-hour window, warming to yellow then orange in the final minutes.
-	private static func dialColor(_ remaining: Double?) -> NSColor {
-		guard let f = remaining else { return .labelColor }
-		switch f {
-		case ..<0.033: return .systemOrange   // ≲ 10 min left
-		case ..<0.10:  return .systemYellow   // ≲ 30 min left
-		default:       return .labelColor
-		}
-	}
-
 	/// The status-item image: a pie that empties clockwise as the 5-hour session
 	/// window nears reset, next to a battery-style usage bar — a rounded-rect whose
 	/// fill grows and shifts colour with usage, with the exact percent printed
@@ -225,7 +203,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				NSBezierPath(ovalIn: NSRect(x: dial.midX - dot / 2, y: dial.midY - dot / 2,
 				                            width: dot, height: dot)).fill()
 			} else {
-				let dialInk = AppDelegate.dialColor(remaining)
+				let dialInk = DialUrgency.forRemaining(remaining).color
 				if let rf = remaining {
 					let f = CGFloat(min(1, max(0, rf)))           // fraction of the window left
 					dialInk.setFill()
@@ -263,7 +241,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				let innerH = barRect.height - pad * 2
 				let w = max(2, min(innerW, innerW * CGFloat(f)))
 				let fr = max(0.5, min(r - pad, w / 2))
-				AppDelegate.usageColor(f).setFill()
+				GaugeLevel.forUsage(f).color.setFill()
 				NSBezierPath(roundedRect: NSRect(x: barRect.minX + pad, y: barRect.minY + pad,
 				                                 width: w, height: innerH), xRadius: fr, yRadius: fr).fill()
 			}

@@ -201,15 +201,21 @@ final class AppState {
 		activeSession.map { Self.remainingFraction(resetsAt: $0.resetsAt) }
 	}
 
-	/// Compact time-until-reset for the countdown dial, e.g. `"3h"` or `"42m"`
-	/// (single largest unit, never below `"1m"`). `nil` when there's no active
-	/// window or no `resets_at`.
-	var menuBarCountdown: String? {
-		guard let resetsAt = activeSession?.resetsAt else { return nil }
-		let secs = resetsAt.timeIntervalSinceNow
+	/// Compact time-until-reset, e.g. `"3h"` or `"42m"` — single largest unit,
+	/// floored, never below `"1m"`. `nil` once the window has reset (or no reset).
+	nonisolated static func countdownLabel(resetsAt: Date?, now: Date = Date()) -> String? {
+		guard let resetsAt else { return nil }
+		let secs = resetsAt.timeIntervalSince(now)
 		guard secs > 0 else { return nil }
 		if secs >= 3600 { return "\(Int(secs / 3600))h" }
 		return "\(max(1, Int(secs / 60)))m"
+	}
+
+	/// `countdownLabel` for the active session window, e.g. `"3h"`. `nil` when
+	/// there's no active window or it hasn't announced a `resets_at`.
+	var menuBarCountdown: String? {
+		guard let resetsAt = activeSession?.resetsAt else { return nil }
+		return Self.countdownLabel(resetsAt: resetsAt)
 	}
 
 	// MARK: - Storage keys
