@@ -41,10 +41,18 @@ mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 
 BINARY_PATH=$(swift build "${BUILD_ARGS[@]}" --show-bin-path)/Usagi
 cp "$BINARY_PATH" "$MACOS_DIR/Usagi"
+chmod +x "$MACOS_DIR/Usagi"
 
 cp "$SCRIPT_DIR/Sources/Usagi/Info.plist" "$CONTENTS_DIR/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$CONTENTS_DIR/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $(date +%Y%m%d%H%M%S)" "$CONTENTS_DIR/Info.plist"
+
+# Without these the bundle isn't recognised as a launchable app — Gatekeeper
+# says "does not seem to be an app" and a downloaded copy can't be opened.
+for key in CFBundlePackageType CFBundleExecutable; do
+	/usr/libexec/PlistBuddy -c "Print :$key" "$CONTENTS_DIR/Info.plist" >/dev/null \
+		|| { echo "error: Info.plist is missing $key" >&2; exit 1; }
+done
 
 if [ -f "$SCRIPT_DIR/AppIcon.icns" ]; then
 	cp "$SCRIPT_DIR/AppIcon.icns" "$RESOURCES_DIR/"

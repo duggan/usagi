@@ -24,7 +24,10 @@ final class AppState {
 	var refreshInterval: TimeInterval = 30 {
 		didSet {
 			UserDefaults.standard.set(refreshInterval, forKey: Self.refreshIntervalKey)
-			refresher.update(interval: refreshInterval)
+			// `refresher?` not `refresher!`: this didSet also fires when init restores
+			// a persisted value, before the refresher is built — and `@Observable`
+			// makes it fire there (it would not for a plain stored property).
+			refresher?.update(interval: refreshInterval)
 		}
 	}
 
