@@ -114,13 +114,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private func updateMenuBarTitle() {
 		guard let button = statusItem?.button else { return }
 		let isError: Bool = { if case .error = appState.phase { return true } else { return false } }()
-		button.image = makeStatusImage(
+		let image = makeStatusImage(
 			usage: appState.sessionUsageFraction,
 			remaining: appState.sessionTimeRemainingFraction,
 			percent: appState.showPercentInBars ? appState.menuBarPercent : nil,
-			error: isError
+			error: isError,
+			signedOut: appState.phase == .signedOut
 		)
+		let label = accessibilityLabel()
+		image.accessibilityDescription = label
+		button.image = image
 		button.title = ""
+		button.setAccessibilityLabel(label)
+	}
+
+	/// VoiceOver text for the status item — a short summary of the current state.
+	private func accessibilityLabel() -> String {
+		switch appState.phase {
+		case .ready:
+			var parts: [String] = []
+			if let s = appState.snapshot?.fiveHour { parts.append("session \(Int(s.utilization.rounded()))%") }
+			if let w = appState.snapshot?.sevenDay { parts.append("weekly \(Int(w.utilization.rounded()))%") }
+			return "Claude usage — " + (parts.isEmpty ? "no data" : parts.joined(separator: ", "))
+		case .signedOut:                 return "Claude usage — not signed in"
+		case .error:                     return "Claude usage — failed to load"
+		case .bootstrapping, .loading:   return "Claude usage — loading"
+		}
 	}
 
 	/// Colour-codes the usage bar: green while there's plenty left, ramping
@@ -149,8 +168,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	/// window nears reset, next to a battery-style usage bar — a rounded-rect whose
 	/// fill grows and shifts colour with usage, with the exact percent printed
 	/// inside it. The dial warms to yellow/orange in the final minutes; on error it
-	/// collapses to a red dot.
-	private func makeStatusImage(usage: Double?, remaining: Double?, percent: String?, error: Bool) -> NSImage {
+	/// collapses to a red dot; when signed out it's a dimmed, slashed ring.
+	private func makeStatusImage(usage: Double?, remaining: Double?, percent: String?, error: Bool, signedOut: Bool = false) -> NSImage {
 		let height: CGFloat = 22
 		let dialW: CGFloat = 15, dialH: CGFloat = 16
 		let gap: CGFloat = 4
@@ -187,6 +206,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			let diameter = min(slot.width, slot.height)
 			let dial = NSRect(x: slot.midX - diameter / 2, y: slot.midY - diameter / 2,
 			                  width: diameter, height: diameter)
+			if signedOut {
+				// A dimmed, slashed ring — reads as "not connected", not "0% used".
+				NSColor.labelColor.withAlphaComponent(0.4).setStroke()
+				let ring = NSBezierPath(ovalIn: dial)
+				ring.lineWidth = stroke
+				ring.stroke()
+				let slash = NSBezierPath()
+				slash.move(to: NSPoint(x: dial.minX + dial.width * 0.18, y: dial.maxY - dial.height * 0.18))
+				slash.line(to: NSPoint(x: dial.maxX - dial.width * 0.18, y: dial.minY + dial.height * 0.18))
+				slash.lineWidth = stroke
+				slash.stroke()
+				return true
+			}
 			if error {
 				NSColor.systemRed.setFill()
 				let dot = dial.width * 0.6
@@ -413,6 +445,7 @@ extension AppDelegate: NSMenuDelegate {
 			break
 		}
 
+		menu.addItem(.separator())
 		menu.addItem(actionItem("Quit usagi", #selector(handleQuit), key: "q"))
 	}
 

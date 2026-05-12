@@ -2,7 +2,7 @@
 
 A minimalist Claude usage tracker for the macOS menu bar.
 
-usagi shows your weekly Claude.ai usage as a small bar in the menu bar (e.g. `▓▓▓▓░ 42%`) and surfaces the rest — Opus weekly, the rolling 5-hour session, and any paid overage spend — in a compact popover.
+usagi shows your Claude.ai session usage as a small gauge in the menu bar, and the full picture — the rolling 5‑hour session, the weekly limit, and any paid overage spend — in a native dropdown.
 
 ## Install
 
@@ -15,12 +15,20 @@ Or grab the DMG from [Releases](https://github.com/duggan/usagi/releases/latest)
 
 Sign in with your Claude account on first launch — the session token lives in your macOS Keychain and never leaves the machine.
 
+## Privacy & how it works
+
+- **It only ever talks to `claude.ai`** — an embedded `WKWebView` pointed at `claude.ai/login` to sign in, then `claude.ai/api/...` to read your usage windows and overage limit. Nothing is sent anywhere else.
+- **No telemetry, no analytics, no crash reporting** — usagi doesn't phone home, full stop.
+- **Your session token stays in the macOS Keychain** (service `ie.duggan.usagi.session`). "Sign out" deletes that entry and clears the embedded web view's cookies/storage.
+- **It uses an *unofficial* claude.ai API** — the same endpoints the website itself calls. They can change or break without notice; that's the main reason there'd ever be an update.
+- "Launch at login" is the standard `SMAppService` mechanism — toggle it here, or in System Settings → General → Login Items.
+
 ## Build from source
 
-Requires macOS 14+ and Swift 5.9 (Xcode 15.4 or newer).
+Requires macOS 14+ to run, and Xcode 16 or newer to build — the SwiftUI code needs the macOS 15 SDK (`View.body` is `@MainActor` there). `swift test` runs the unit tests.
 
 ```
-./build.sh                         # debug-quality release build
+./build.sh                         # release build → bin/Usagi.app
 UNIVERSAL=1 DMG=1 ./build.sh       # universal binary + DMG (drag-install)
 open bin/Usagi.app
 ```

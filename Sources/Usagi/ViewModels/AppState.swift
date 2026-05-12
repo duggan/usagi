@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import AppKit
+import UserNotifications
 
 @MainActor
 @Observable
@@ -56,6 +57,9 @@ final class AppState {
 		}
 		self.refresher = UsageRefresher { [weak self] in
 			await self?.refresh()
+			guard let self else { return false }
+			if case .ready = self.phase { return true }
+			return false
 		}
 	}
 
@@ -135,6 +139,7 @@ final class AppState {
 				NSLog("usagi: five_hour = nil")
 			}
 		} catch ClaudeAPIError.unauthorized {
+			notifySessionExpired()
 			signOut()
 		} catch {
 			phase = .error(error.localizedDescription)
@@ -142,11 +147,28 @@ final class AppState {
 		menuBarTick &+= 1
 	}
 
+	/// One-shot system notification when claude.ai logs us out, so a background
+	/// user finds out instead of silently running on stale data. Authorization is
+	/// requested lazily — only here, the first time it actually happens.
+	private func notifySessionExpired() {
+		Task {
+			let center = UNUserNotificationCenter.current()
+			if await center.notificationSettings().authorizationStatus == .notDetermined {
+				_ = try? await center.requestAuthorization(options: [.alert, .sound])
+			}
+			let content = UNMutableNotificationContent()
+			content.title = "Signed out of Claude"
+			content.body = "Your claude.ai session expired — open usagi to sign back in."
+			try? await center.add(UNNotificationRequest(
+				identifier: "ie.duggan.usagi.session-expired", content: content, trigger: nil))
+		}
+	}
+
 	// MARK: - Menu bar gauge
 
 	/// Length of the rolling session window. The API only reports `resets_at`,
 	/// so we infer "time remaining" against this assumed span.
-	static let sessionWindow: TimeInterval = 5 * 3600
+	nonisolated static let sessionWindow: TimeInterval = 5 * 3600
 
 	private var activeSession: UsageWindow? {
 		guard phase == .ready else { return nil }
@@ -163,13 +185,17 @@ final class AppState {
 		activeSession.map { min(1, max(0, $0.utilization / 100)) }
 	}
 
+	/// Fraction (0…1) of a `window`-long span still remaining at `now`, given when
+	/// it `resetsAt`. A window that hasn't announced a reset yet is treated as full.
+	nonisolated static func remainingFraction(resetsAt: Date?, now: Date = Date(), window: TimeInterval = sessionWindow) -> Double {
+		guard let resetsAt else { return 1 }
+		return min(1, max(0, resetsAt.timeIntervalSince(now) / window))
+	}
+
 	/// 0…1 — fraction of the 5-hour window still remaining (drains toward reset).
-	/// `nil` when there's no active window. An active window that hasn't announced
-	/// a `resets_at` yet (e.g. just opened) is treated as full.
+	/// `nil` when there's no active window.
 	var sessionTimeRemainingFraction: Double? {
-		guard let session = activeSession else { return nil }
-		guard let resetsAt = session.resetsAt else { return 1 }
-		return min(1, max(0, resetsAt.timeIntervalSinceNow / Self.sessionWindow))
+		activeSession.map { Self.remainingFraction(resetsAt: $0.resetsAt) }
 	}
 
 	/// Compact time-until-reset for the countdown dial, e.g. `"3h"` or `"42m"`
