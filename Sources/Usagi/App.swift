@@ -102,6 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			_ = appState.menuBarTick
 			_ = appState.phase
 			_ = appState.snapshot
+			_ = appState.showPercentInBars
 		} onChange: { [weak self] in
 			Task { @MainActor [weak self] in
 				self?.updateMenuBarTitle()
@@ -116,7 +117,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		button.image = makeStatusImage(
 			usage: appState.sessionUsageFraction,
 			remaining: appState.sessionTimeRemainingFraction,
-			percent: appState.menuBarPercent,
+			percent: appState.showPercentInBars ? appState.menuBarPercent : nil,
 			error: isError
 		)
 		button.title = ""

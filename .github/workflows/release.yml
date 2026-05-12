@@ -12,7 +12,9 @@ on:
 
 jobs:
   release:
-    runs-on: macos-14
+    # macos-15 ships the macOS 15 SDK / Xcode 16, which the SwiftUI code requires
+    # (View.body is @MainActor there, so it can touch @MainActor AppState).
+    runs-on: macos-15
     environment: release
 
     permissions:
@@ -30,7 +32,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Resolve tag and version
         id: meta
@@ -44,8 +46,11 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "$VERSION" > VERSION
 
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+      - name: Show toolchain
+        run: |
+          xcode-select -p
+          xcodebuild -version
+          swift --version
 
       - name: Import signing certificate
         run: |
