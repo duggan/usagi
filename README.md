@@ -4,6 +4,8 @@ A minimalist Claude usage tracker for the macOS menu bar.
 
 usagi shows your Claude.ai session usage as a small gauge in the menu bar, and the full picture — the rolling 5‑hour session, the weekly limit, and any paid overage spend — in a native dropdown.
 
+> "Beware of bugs in the above code; I have only specified it, not written it." – @duggan
+
 ## Install
 
 ```
