@@ -2,16 +2,26 @@ import Foundation
 import Security
 
 /// Stores the Claude.ai `sessionKey` cookie value in the macOS Keychain.
-enum SessionStore {
-	private static let service = "ie.duggan.usagi.session"
-	private static let account = "claude.ai"
+///
+/// The static `read`/`write`/`delete` API delegates to a default-keyed instance
+/// (`SessionStore.default`). Tests construct their own `SessionStore(service:account:)`
+/// with a unique service name so they never touch the real entry.
+struct SessionStore {
+	let service: String
+	let account: String
 
 	enum SessionStoreError: Error {
 		case unexpectedStatus(OSStatus)
 		case dataEncodingFailed
 	}
 
-	static func read() -> String? {
+	static let `default` = SessionStore(service: "ie.duggan.usagi.session", account: "claude.ai")
+
+	static func read() -> String? { Self.default.read() }
+	static func write(_ value: String) throws { try Self.default.write(value) }
+	@discardableResult static func delete() -> Bool { Self.default.delete() }
+
+	func read() -> String? {
 		let query: [String: Any] = [
 			kSecClass as String: kSecClassGenericPassword,
 			kSecAttrService as String: service,
@@ -28,7 +38,7 @@ enum SessionStore {
 		return value
 	}
 
-	static func write(_ value: String) throws {
+	func write(_ value: String) throws {
 		guard let data = value.data(using: .utf8) else {
 			throw SessionStoreError.dataEncodingFailed
 		}
@@ -56,7 +66,7 @@ enum SessionStore {
 	}
 
 	@discardableResult
-	static func delete() -> Bool {
+	func delete() -> Bool {
 		let query: [String: Any] = [
 			kSecClass as String: kSecClassGenericPassword,
 			kSecAttrService as String: service,

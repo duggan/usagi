@@ -13,6 +13,11 @@ cask "usagi" do
 
   depends_on macos: ">= :sonoma"
 
+  livecheck do
+    url :url
+    strategy :github_latest
+  end
+
   app "Usagi.app"
 
   zap trash: [

@@ -16,7 +16,15 @@ final class UsageRefresher {
 	private var consecutiveFailures = 0
 
 	/// Never wait longer than this between ticks, however long the backoff gets.
-	private static let maxDelay: TimeInterval = 30 * 60
+	nonisolated static let maxDelay: TimeInterval = 30 * 60
+
+	/// Pure backoff math: 0 failures → base, then 2×, 4×, …, 64× (capped at 6 failures),
+	/// finally clamped to `maxDelay`.
+	nonisolated static func delay(consecutiveFailures: Int, baseInterval: TimeInterval) -> TimeInterval {
+		let capped = min(max(consecutiveFailures, 0), 6)
+		let multiplier = capped == 0 ? 1.0 : Double(1 << capped)
+		return min(baseInterval * multiplier, maxDelay)
+	}
 
 	init(tick: @escaping () async -> Bool) {
 		self.tick = tick
@@ -49,8 +57,8 @@ final class UsageRefresher {
 				// `tick()` may have triggered stop()/start() (e.g. sign-out); if so, don't reschedule.
 				guard self.running, self.generation == gen else { return }
 				self.consecutiveFailures = ok ? 0 : min(self.consecutiveFailures + 1, 6)
-				let multiplier = ok ? 1.0 : Double(1 << self.consecutiveFailures)   // 2, 4, … 64
-				self.schedule(gen, after: min(self.interval * multiplier, Self.maxDelay))
+				self.schedule(gen, after: Self.delay(consecutiveFailures: self.consecutiveFailures,
+				                                    baseInterval: self.interval))
 			}
 		}
 	}

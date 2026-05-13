@@ -1,6 +1,8 @@
 import AppKit
 import WebKit
 
+private let loginURL = URL(string: "https://claude.ai/login")!
+
 /// Opens an embedded WKWebView at claude.ai/login, watches its cookie store
 /// for the `sessionKey` cookie, and persists it to the Keychain.
 @MainActor
@@ -20,6 +22,32 @@ final class AuthCoordinator: NSObject {
 			return
 		}
 
+		// Prime: if the shared WKWebsiteDataStore already holds a valid sessionKey
+		// from a previous sign-in, capture it now and skip the window entirely.
+		// Otherwise the user would see a flash of the login page before it dismissed.
+		WKWebsiteDataStore.default().httpCookieStore.getAllCookies { [weak self] cookies in
+			Task { @MainActor [weak self] in
+				guard let self else { return }
+				if let value = Self.extractSessionKey(from: cookies) {
+					do {
+						try SessionStore.write(value)
+						self.onCapture?(value)
+						self.onCapture = nil
+						return
+					} catch {
+						NSLog("usagi: failed to persist primed session key: \(error)")
+					}
+				}
+				self.openLoginWindow()
+			}
+		}
+	}
+
+	private func openLoginWindow() {
+		// Guard against re-entrance: two near-simultaneous presentLogin calls can
+		// both miss the prime and arrive here. The second should be a no-op.
+		guard window == nil else { return }
+
 		let config = WKWebViewConfiguration()
 		// Persistent data store so the user isn't logged out across app restarts
 		// during onboarding hiccups; we wipe it on signOut().
@@ -36,12 +64,6 @@ final class AuthCoordinator: NSObject {
 			}
 		}
 		config.websiteDataStore.httpCookieStore.add(observer)
-		// Prime: read existing cookies in case the user is already logged in.
-		config.websiteDataStore.httpCookieStore.getAllCookies { cookies in
-			Task { @MainActor in
-				self.handleCookies(cookies)
-			}
-		}
 		self.observer = observer
 
 		let window = NSWindow(
@@ -59,25 +81,30 @@ final class AuthCoordinator: NSObject {
 		NSApp.activate(ignoringOtherApps: true)
 		self.window = window
 
-		webView.load(URLRequest(url: URL(string: "https://claude.ai/login")!))
+		webView.load(URLRequest(url: loginURL))
 	}
 
 	private func handleCookies(_ cookies: [HTTPCookie]) {
-		guard let cookie = cookies.first(where: { isSessionCookie($0) }),
-		      cookie.value.hasPrefix("sk-ant-")
-		else { return }
+		guard let value = Self.extractSessionKey(from: cookies) else { return }
 
 		do {
-			try SessionStore.write(cookie.value)
-			onCapture?(cookie.value)
+			try SessionStore.write(value)
+			onCapture?(value)
 			close()
 		} catch {
 			NSLog("usagi: failed to persist session key: \(error)")
 		}
 	}
 
-	private func isSessionCookie(_ cookie: HTTPCookie) -> Bool {
+	nonisolated static func isSessionCookie(_ cookie: HTTPCookie) -> Bool {
 		cookie.name == "sessionKey" && (cookie.domain.hasSuffix("claude.ai") || cookie.domain == "claude.ai")
+	}
+
+	nonisolated static func extractSessionKey(from cookies: [HTTPCookie]) -> String? {
+		guard let cookie = cookies.first(where: isSessionCookie),
+		      cookie.value.hasPrefix("sk-ant-")
+		else { return nil }
+		return cookie.value
 	}
 
 	/// Releases everything tied to the login session. Safe to call multiple times.

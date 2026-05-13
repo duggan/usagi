@@ -278,7 +278,7 @@ enum ClaudeMark {
 		t.translate(x: b.minX, y: b.minY + b.height)
 		t.scale(x: 1, y: -1)
 		t.translate(x: -b.minX, y: -b.minY)
-		let glyph = bezier.copy() as! NSBezierPath
+		let glyph = (bezier.copy() as? NSBezierPath) ?? bezier
 		glyph.transform(using: t)
 		glyph.fill()
 	}

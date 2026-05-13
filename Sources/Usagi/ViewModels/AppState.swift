@@ -157,13 +157,21 @@ final class AppState {
 		Task {
 			let center = UNUserNotificationCenter.current()
 			if await center.notificationSettings().authorizationStatus == .notDetermined {
-				_ = try? await center.requestAuthorization(options: [.alert, .sound])
+				do {
+					_ = try await center.requestAuthorization(options: [.alert, .sound])
+				} catch {
+					NSLog("usagi: notification authorization request failed: \(error)")
+				}
 			}
 			let content = UNMutableNotificationContent()
 			content.title = "Signed out of Claude"
 			content.body = "Your claude.ai session expired — open usagi to sign back in."
-			try? await center.add(UNNotificationRequest(
-				identifier: "ie.duggan.usagi.session-expired", content: content, trigger: nil))
+			do {
+				try await center.add(UNNotificationRequest(
+					identifier: "ie.duggan.usagi.session-expired", content: content, trigger: nil))
+			} catch {
+				NSLog("usagi: failed to post session-expired notification: \(error)")
+			}
 		}
 	}
 
