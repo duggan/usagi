@@ -25,6 +25,27 @@ Sign in with your Claude account on first launch — the session token lives in 
 - **It uses an *unofficial* claude.ai API** — the same endpoints the website itself calls. They can change or break without notice; that's the main reason there'd ever be an update.
 - "Launch at login" is the standard `SMAppService` mechanism — toggle it here, or in System Settings → General → Login Items.
 
+## Debugging
+
+When usagi misbehaves — blank bars, wrong account, "Signed out" loops — the menu-bar UI is too small to explain what happened, but every interesting decision is logged. Everything is prefixed `usagi:` so it filters cleanly.
+
+**In Console.app**: open Console, pick your Mac in the sidebar, type `usagi:` in the search box, and click *Start streaming*. Then trigger a refresh (click the menu bar icon, or wait for the next interval).
+
+Or stream from the terminal:
+
+```
+log stream --predicate 'eventMessage CONTAINS "usagi:"' --style compact
+```
+
+What to look for:
+
+- `usagi: orgs count=N, selected=… (uuid)` — confirms which organisation was picked. If you're on a team/enterprise plan that ranks ahead of your personal org in the list, usage for the wrong org will be empty.
+- `usagi: five_hour util=… resets_at=…` — the parsed 5‑hour window, logged on every successful refresh.
+- `usagi: non-JSON response for /usage content-type=text/html …` — claude.ai handed back HTML instead of JSON (usually a Cloudflare challenge). The first ~200 bytes of the body are logged so you can confirm.
+- `usagi: decode failed for /usage response: …` — the JSON parsed but didn't match the expected shape; the body preview is logged.
+
+A nil/missing `five_hour` is treated as a hard failure rather than a silent zero, so a broken response surfaces as a visible error in the dropdown and a decode-failed log line — not blank bars.
+
 ## Build from source
 
 Requires macOS 14+ to run, and Xcode 16 or newer to build — the SwiftUI code needs the macOS 15 SDK (`View.body` is `@MainActor` there). `swift test` runs the unit tests.
