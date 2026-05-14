@@ -117,6 +117,11 @@ final class AppState {
 			} else {
 				let orgs = try await api.organizations(sessionKey: key)
 				guard let first = orgs.first else { throw ClaudeAPIError.noOrganization }
+				NSLog("usagi: orgs count=%d, selected=%@ (%@)", orgs.count, first.name, first.uuid)
+				if orgs.count > 1 {
+					let others = orgs.dropFirst().map { "\($0.name) (\($0.uuid))" }.joined(separator: ", ")
+					NSLog("usagi: other orgs available: %@", others)
+				}
 				org = first
 				organization = first
 			}
@@ -131,16 +136,13 @@ final class AppState {
 			overage = overageValue
 			lastRefresh = Date()
 			phase = .ready
-			if let fh = usage.fiveHour {
-				let secs = fh.resetsAt?.timeIntervalSinceNow
-				NSLog("usagi: five_hour util=%.1f resets_at=%@ (in %@s) → remaining=%@",
-				      fh.utilization,
-				      fh.resetsAt.map { ISO8601DateFormatter().string(from: $0) } ?? "nil",
-				      secs.map { String(format: "%.0f", $0) } ?? "nil",
-				      sessionTimeRemainingFraction.map { String(format: "%.3f", $0) } ?? "nil")
-			} else {
-				NSLog("usagi: five_hour = nil")
-			}
+			let fh = usage.fiveHour
+			let secs = fh.resetsAt?.timeIntervalSinceNow
+			NSLog("usagi: five_hour util=%.1f resets_at=%@ (in %@s) → remaining=%@",
+			      fh.utilization,
+			      fh.resetsAt.map { ISO8601DateFormatter().string(from: $0) } ?? "nil",
+			      secs.map { String(format: "%.0f", $0) } ?? "nil",
+			      sessionTimeRemainingFraction.map { String(format: "%.3f", $0) } ?? "nil")
 		} catch ClaudeAPIError.unauthorized {
 			notifySessionExpired()
 			signOut()

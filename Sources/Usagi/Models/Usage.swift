@@ -15,13 +15,15 @@ struct UsageWindow: Codable, Hashable {
 /// null on accounts where it doesn't apply (e.g. `seven_day_opus` on plans
 /// without Opus access).
 struct UsageSnapshot: Codable, Hashable {
-	let fiveHour: UsageWindow?
+	let fiveHour: UsageWindow
 	let sevenDay: UsageWindow?
 	let sevenDayOpus: UsageWindow?
+	let sevenDaySonnet: UsageWindow?
 
 	enum CodingKeys: String, CodingKey {
 		case fiveHour = "five_hour"
 		case sevenDay = "seven_day"
 		case sevenDayOpus = "seven_day_opus"
+		case sevenDaySonnet = "seven_day_sonnet"
 	}
 }

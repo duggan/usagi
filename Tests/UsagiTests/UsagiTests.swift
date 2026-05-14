@@ -18,24 +18,28 @@ final class UsagiTests: XCTestCase {
 		{
 		  "five_hour": { "utilization": 76.4, "resets_at": "2026-05-12T18:00:00.123Z" },
 		  "seven_day": { "utilization": 20, "resets_at": "2026-05-18T09:30:00Z" },
-		  "seven_day_opus": null
+		  "seven_day_opus": null,
+		  "seven_day_sonnet": { "utilization": 8, "resets_at": "2026-05-18T09:30:00Z" }
 		}
 		""")
-		XCTAssertEqual(snap.fiveHour?.utilization, 76.4)
+		XCTAssertEqual(snap.fiveHour.utilization, 76.4)
 		XCTAssertEqual(snap.sevenDay?.utilization, 20)
 		XCTAssertNil(snap.sevenDayOpus)
+		XCTAssertEqual(snap.sevenDaySonnet?.utilization, 8)
 
 		let iso = ISO8601DateFormatter()
 		XCTAssertEqual(snap.sevenDay?.resetsAt, iso.date(from: "2026-05-18T09:30:00Z"))
 		iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-		XCTAssertEqual(snap.fiveHour?.resetsAt, iso.date(from: "2026-05-12T18:00:00.123Z"))
+		XCTAssertEqual(snap.fiveHour.resetsAt, iso.date(from: "2026-05-12T18:00:00.123Z"))
 	}
 
-	func testUsageSnapshotAllNull() throws {
-		let snap = try decode(UsageSnapshot.self, #"{ "five_hour": null, "seven_day": null, "seven_day_opus": null }"#)
-		XCTAssertNil(snap.fiveHour)
-		XCTAssertNil(snap.sevenDay)
-		XCTAssertNil(snap.sevenDayOpus)
+	/// Regression: a response with `five_hour: null` (or missing entirely) must
+	/// fail loudly rather than decode to nil and silently show all zeros — that
+	/// was the user-visible bug for some testers.
+	func testUsageSnapshotRejectsMissingFiveHour() {
+		XCTAssertThrowsError(try decode(UsageSnapshot.self,
+			#"{ "five_hour": null, "seven_day": null, "seven_day_opus": null }"#))
+		XCTAssertThrowsError(try decode(UsageSnapshot.self, "{}"))
 	}
 
 	func testUsageSnapshotToleratesUnknownKeys() throws {
@@ -45,26 +49,45 @@ final class UsagiTests: XCTestCase {
 		  "five_hour": { "utilization": 5, "resets_at": "2026-05-12T18:00:00Z", "limit_tokens": 999 },
 		  "seven_day": null,
 		  "seven_day_opus": null,
+		  "seven_day_oauth_apps": { "utilization": 0, "resets_at": null },
 		  "some_future_window": { "utilization": 1, "resets_at": null }
 		}
 		""")
-		XCTAssertEqual(snap.fiveHour?.utilization, 5)
-		XCTAssertNotNil(snap.fiveHour?.resetsAt)
+		XCTAssertEqual(snap.fiveHour.utilization, 5)
+		XCTAssertNotNil(snap.fiveHour.resetsAt)
 	}
 
 	func testWindowWithoutResetsAt() throws {
 		let snap = try decode(UsageSnapshot.self, #"{ "five_hour": { "utilization": 12 }, "seven_day": null, "seven_day_opus": null }"#)
-		XCTAssertEqual(snap.fiveHour?.utilization, 12)
-		XCTAssertNil(snap.fiveHour?.resetsAt)
+		XCTAssertEqual(snap.fiveHour.utilization, 12)
+		XCTAssertNil(snap.fiveHour.resetsAt)
 	}
 
 	// MARK: - GET /organizations/{id}/overage_spend_limit
 
-	func testOverageDecodingAndUtilization() throws {
+	func testOverageDecodingLegacyFields() throws {
 		let o = try decode(OverageSpend.self, #"{ "monthly_credit_limit": 2000, "used_credits": 815, "currency": "EUR", "is_enabled": true }"#)
 		XCTAssertTrue(o.isEnabled)
 		XCTAssertEqual(o.currency, "EUR")
+		XCTAssertEqual(o.monthlyCreditLimit, 2000)
+		XCTAssertEqual(o.usedCredits, 815)
 		XCTAssertEqual(o.utilization, 40.75, accuracy: 0.0001)
+	}
+
+	/// The live API now emits `monthly_limit` (and may return `used_credits` as a
+	/// JSON float like `21.0`). Both shapes must decode — that's the divergence
+	/// cross-referenced from f-is-h/usage4claude's `ExtraUsageResponse`.
+	func testOverageDecodingNewFields() throws {
+		let o = try decode(OverageSpend.self, #"{ "monthly_limit": 2000, "used_credits": 21.0, "currency": "USD", "is_enabled": true }"#)
+		XCTAssertTrue(o.isEnabled)
+		XCTAssertEqual(o.monthlyCreditLimit, 2000)
+		XCTAssertEqual(o.usedCredits, 21.0)
+	}
+
+	/// When `is_enabled` is absent, a non-zero limit implies enabled.
+	func testOverageInfersEnabledFromLimit() throws {
+		let o = try decode(OverageSpend.self, #"{ "monthly_limit": 5000, "used_credits": 0, "currency": "USD" }"#)
+		XCTAssertTrue(o.isEnabled)
 	}
 
 	func testOverageUtilizationEdges() {
@@ -139,7 +162,7 @@ final class AppStateMenuBarTests: XCTestCase {
 
 	func testNoSessionGaugeOutsideReady() {
 		let s = AppState()
-		s.snapshot = UsageSnapshot(fiveHour: UsageWindow(utilization: 50, resetsAt: Date()), sevenDay: nil, sevenDayOpus: nil)
+		s.snapshot = UsageSnapshot(fiveHour: UsageWindow(utilization: 50, resetsAt: Date()), sevenDay: nil, sevenDayOpus: nil, sevenDaySonnet: nil)
 		for phase: AppState.Phase in [.bootstrapping, .loading, .signedOut, .error("nope")] {
 			s.phase = phase
 			XCTAssertNil(s.menuBarPercent, "\(phase)")
@@ -153,7 +176,7 @@ final class AppStateMenuBarTests: XCTestCase {
 		let s = AppState()
 		s.snapshot = UsageSnapshot(
 			fiveHour: UsageWindow(utilization: 76.4, resetsAt: Date(timeIntervalSinceNow: 2.5 * 3600)),
-			sevenDay: nil, sevenDayOpus: nil)
+			sevenDay: nil, sevenDayOpus: nil, sevenDaySonnet: nil)
 		s.phase = .ready
 		XCTAssertEqual(s.menuBarPercent, "76%")
 		XCTAssertEqual(s.sessionUsageFraction ?? -1, 0.764, accuracy: 0.0001)
@@ -163,7 +186,7 @@ final class AppStateMenuBarTests: XCTestCase {
 
 	func testReadyClampsOverConsumed() {
 		let s = AppState()
-		s.snapshot = UsageSnapshot(fiveHour: UsageWindow(utilization: 137, resetsAt: nil), sevenDay: nil, sevenDayOpus: nil)
+		s.snapshot = UsageSnapshot(fiveHour: UsageWindow(utilization: 137, resetsAt: nil), sevenDay: nil, sevenDayOpus: nil, sevenDaySonnet: nil)
 		s.phase = .ready
 		XCTAssertEqual(s.menuBarPercent, "137%")              // label stays exact
 		XCTAssertEqual(s.sessionUsageFraction, 1.0)           // bar fraction is clamped
@@ -171,9 +194,12 @@ final class AppStateMenuBarTests: XCTestCase {
 		XCTAssertNil(s.menuBarCountdown)                       // …and no countdown without resets_at
 	}
 
-	func testReadyButNoSessionWindow() {
+	/// `fiveHour` is required by the wire model, so "no session window" can only
+	/// manifest as a nil snapshot (refresh hasn't completed, or failed). The menu
+	/// bar still has to hide its gauge in that case.
+	func testReadyButNoSnapshot() {
 		let s = AppState()
-		s.snapshot = UsageSnapshot(fiveHour: nil, sevenDay: UsageWindow(utilization: 20, resetsAt: nil), sevenDayOpus: nil)
+		s.snapshot = nil
 		s.phase = .ready
 		XCTAssertNil(s.menuBarPercent)
 		XCTAssertNil(s.sessionUsageFraction)

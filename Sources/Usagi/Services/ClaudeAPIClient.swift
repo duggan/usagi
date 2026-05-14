@@ -5,6 +5,7 @@ enum ClaudeAPIError: Error, LocalizedError {
 	case noSessionKey
 	case noOrganization
 	case http(Int)
+	case notJSON(contentType: String, preview: String)
 	case decoding(path: String, detail: String)
 	case transport(Error)
 
@@ -14,6 +15,7 @@ enum ClaudeAPIError: Error, LocalizedError {
 		case .noSessionKey: "Not signed in"
 		case .noOrganization: "No organisations on this account"
 		case .http(let code): "Claude API returned \(code)"
+		case .notJSON(let ct, _): "Claude API returned non-JSON (\(ct)) — likely Cloudflare"
 		case .decoding(let path, let detail): "Decode failed at \(path): \(detail)"
 		case .transport(let err): err.localizedDescription
 		}
@@ -76,6 +78,28 @@ actor ClaudeAPIClient {
 		return decoder
 	}
 
+	/// Headers crafted to look like a real browser request to /api on claude.ai.
+	/// Cloudflare gates the unofficial API on these — a bare `Cookie + Accept`
+	/// can return a challenge page (sometimes HTTP 200 with HTML, sometimes an
+	/// empty/odd JSON shape). Mirrors f-is-h/usage4claude's header builder.
+	static func browserHeaders(sessionKey: String) -> [String: String] {
+		[
+			"accept": "*/*",
+			"accept-language": "en-US,en;q=0.9",
+			"content-type": "application/json",
+			"anthropic-client-platform": "web_claude_ai",
+			"anthropic-client-version": "1.0.0",
+			"user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+			"origin": "https://claude.ai",
+			"referer": "https://claude.ai/settings/usage",
+			"sec-fetch-dest": "empty",
+			"sec-fetch-mode": "cors",
+			"sec-fetch-site": "same-origin",
+			"Cookie": "sessionKey=\(sessionKey)",
+			"X-Usagi-Client": "usagi/\(AppVersion.short)",
+		]
+	}
+
 	// MARK: - Endpoints
 
 	func organizations(sessionKey: String) async throws -> [Organization] {
@@ -103,9 +127,9 @@ actor ClaudeAPIClient {
 
 		var request = URLRequest(url: Self.baseURL.appendingPathComponent(path))
 		request.httpMethod = "GET"
-		request.setValue("sessionKey=\(sessionKey)", forHTTPHeaderField: "Cookie")
-		request.setValue("application/json", forHTTPHeaderField: "Accept")
-		request.setValue("usagi/\(AppVersion.short)", forHTTPHeaderField: "User-Agent")
+		for (key, value) in Self.browserHeaders(sessionKey: sessionKey) {
+			request.setValue(value, forHTTPHeaderField: key)
+		}
 
 		let data: Data
 		let response: URLResponse
@@ -126,6 +150,17 @@ actor ClaudeAPIClient {
 			throw ClaudeAPIError.unauthorized
 		default:
 			throw ClaudeAPIError.http(http.statusCode)
+		}
+
+		// Cloudflare can hand back a challenge page with HTTP 200 + text/html when
+		// it doesn't like the request shape. Surface that as a distinct error
+		// rather than letting it fall through to a generic decode failure (or,
+		// worse, an empty-but-valid JSON that silently produces all-zero usage).
+		if let ct = http.value(forHTTPHeaderField: "Content-Type")?.lowercased(),
+		   !ct.isEmpty, !ct.contains("json") {
+			let preview = String(data: data.prefix(200), encoding: .utf8) ?? "<non-utf8>"
+			NSLog("usagi: non-JSON response for %@ content-type=%@\n%@", path, ct, preview)
+			throw ClaudeAPIError.notJSON(contentType: ct, preview: preview)
 		}
 
 		do {

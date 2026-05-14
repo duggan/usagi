@@ -128,10 +128,48 @@ final class ClaudeAPIClientTests: XCTestCase {
 		}
 	}
 
+	// MARK: - Cloudflare / non-JSON
+
+	/// A Cloudflare challenge that returns HTTP 200 + `text/html` must surface
+	/// as a distinct `.notJSON` error rather than silently producing zero-filled
+	/// usage. This was the underlying cause of "all bars are 0%" for the first
+	/// external tester.
+	func testNonJSONResponseSurfacesAsNotJSON() async {
+		StubURLProtocol.handler = { request in
+			let resp = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1",
+				headerFields: ["Content-Type": "text/html; charset=utf-8"])!
+			return (resp, Data("<html><body>Just a moment...</body></html>".utf8))
+		}
+		do {
+			_ = try await client.organizations(sessionKey: "sk-ant-abc")
+			XCTFail("expected throw")
+		} catch ClaudeAPIError.notJSON(let ct, _) {
+			XCTAssertTrue(ct.contains("html"), "expected html content-type, got \(ct)")
+		} catch {
+			XCTFail("unexpected error: \(error)")
+		}
+	}
+
+	/// Verifies the browser-fingerprint headers actually reach the wire. If any
+	/// of these go missing, Cloudflare starts handing back challenge pages.
+	func testRequestSendsBrowserHeaders() async throws {
+		StubURLProtocol.handler = { request in
+			(Self.response(200, for: request), Data("[]".utf8))
+		}
+		_ = try await client.organizations(sessionKey: "sk-ant-abc")
+		let req = StubURLProtocol.lastRequest
+		XCTAssertEqual(req?.value(forHTTPHeaderField: "anthropic-client-platform"), "web_claude_ai")
+		XCTAssertEqual(req?.value(forHTTPHeaderField: "origin"), "https://claude.ai")
+		XCTAssertEqual(req?.value(forHTTPHeaderField: "referer"), "https://claude.ai/settings/usage")
+		XCTAssertEqual(req?.value(forHTTPHeaderField: "sec-fetch-site"), "same-origin")
+		XCTAssertTrue(req?.value(forHTTPHeaderField: "user-agent")?.contains("Chrome") == true)
+	}
+
 	// MARK: - Helpers
 
 	private static func response(_ code: Int, for request: URLRequest) -> HTTPURLResponse {
-		HTTPURLResponse(url: request.url!, statusCode: code, httpVersion: "HTTP/1.1", headerFields: nil)!
+		HTTPURLResponse(url: request.url!, statusCode: code, httpVersion: "HTTP/1.1",
+		                headerFields: ["Content-Type": "application/json"])!
 	}
 
 	private func assertThrows(_ expected: ClaudeAPIError,

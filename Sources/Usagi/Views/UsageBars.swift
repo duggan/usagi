@@ -7,15 +7,13 @@ struct UsageBarsView: View {
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 12) {
-			if let session = snapshot.fiveHour {
-				UsageRow(
-					label: "5-hour session",
-					utilization: session.utilization,
-					detail: resetDetail(session.resetsAt, prefix: "Resets"),
-					tint: Palette.session,
-					showPercent: showPercent
-				)
-			}
+			UsageRow(
+				label: "5-hour session",
+				utilization: snapshot.fiveHour.utilization,
+				detail: resetDetail(snapshot.fiveHour.resetsAt, prefix: "Resets"),
+				tint: Palette.session,
+				showPercent: showPercent
+			)
 
 			if let weekly = snapshot.sevenDay {
 				UsageRow(
