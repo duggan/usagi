@@ -1,5 +1,5 @@
 #!/usr/bin/env swift
-// Regenerates ../AppIcon.icns from ../data/usagi.png.
+// Regenerates ../AppIcon.icns from ../data/usagi.svg.
 //
 //   swift scripts/make-icns.swift     # run from the repo root
 //
@@ -11,12 +11,11 @@ import AppKit
 import CoreGraphics
 
 let root = FileManager.default.currentDirectoryPath
-let srcPath = "\(root)/data/usagi.png"
+let srcPath = "\(root)/data/usagi.svg"
 let icnsPath = "\(root)/AppIcon.icns"
 let iconsetPath = "\(root)/AppIcon.iconset"
 
-guard let nsImage = NSImage(contentsOfFile: srcPath),
-      let source = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+guard let nsImage = NSImage(contentsOfFile: srcPath) else {
     FileHandle.standardError.write("error: can't load \(srcPath)\n".data(using: .utf8)!)
     exit(1)
 }
@@ -38,7 +37,13 @@ func render(_ px: Int) -> CGImage {
     ctx.clip()
     ctx.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 1))   // matches the source's black field
     ctx.fill(box)
-    ctx.draw(source, in: box)
+    // Rasterize the SVG at the target rect so the glow's feGaussianBlur is
+    // computed at output resolution. cgImage(forProposedRect:) would freeze
+    // it at NSImage's default raster size and re-scale.
+    let prev = NSGraphicsContext.current
+    NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: false)
+    nsImage.draw(in: box, from: .zero, operation: .sourceOver, fraction: 1.0)
+    NSGraphicsContext.current = prev
     return ctx.makeImage()!
 }
 
