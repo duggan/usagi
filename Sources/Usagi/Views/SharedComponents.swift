@@ -32,18 +32,19 @@ struct UsageRow: View {
 struct ProgressBar: View {
 	let fraction: Double
 	let tint: Color
+	var height: CGFloat = 6
 
 	var body: some View {
 		GeometryReader { geo in
 			ZStack(alignment: .leading) {
-				RoundedRectangle(cornerRadius: 3)
+				RoundedRectangle(cornerRadius: height / 2)
 					.fill(Palette.dim.opacity(0.18))
-				RoundedRectangle(cornerRadius: 3)
+				RoundedRectangle(cornerRadius: height / 2)
 					.fill(tint)
 					.frame(width: geo.size.width * max(0, min(1, fraction)))
 			}
 		}
-		.frame(height: 6)
+		.frame(height: height)
 	}
 }
 

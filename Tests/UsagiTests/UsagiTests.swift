@@ -63,6 +63,107 @@ final class UsagiTests: XCTestCase {
 		XCTAssertNil(snap.fiveHour.resetsAt)
 	}
 
+	/// Per-model weekly caps arrive in `limits[]`, not as a `seven_day_<model>`
+	/// window. Payload copied from a live response on 2026-07-09.
+	func testWeeklyScopedLimits() throws {
+		let snap = try decode(UsageSnapshot.self, """
+		{
+		  "five_hour": { "utilization": 16, "resets_at": "2026-07-09T23:00:00.428923+00:00" },
+		  "seven_day": { "utilization": 4, "resets_at": "2026-07-13T05:00:00.428949+00:00" },
+		  "seven_day_opus": null,
+		  "seven_day_sonnet": null,
+		  "limits": [
+		    { "group": "session", "kind": "session", "percent": 16,
+		      "resets_at": "2026-07-09T23:00:00.264316+00:00", "scope": null, "severity": "normal" },
+		    { "group": "weekly", "kind": "weekly_all", "percent": 4,
+		      "resets_at": "2026-07-13T05:00:00.264335+00:00", "scope": null, "severity": "normal" },
+		    { "group": "weekly", "kind": "weekly_scoped", "percent": 1,
+		      "resets_at": "2026-07-13T05:00:00.264593+00:00",
+		      "scope": { "model": { "display_name": "Fable", "id": null }, "surface": null },
+		      "severity": "normal" }
+		  ]
+		}
+		""")
+
+		// `weekly_all` is the weekly bar itself and must not be repeated as a
+		// sub-bar; `session` is a different group entirely.
+		let scoped = snap.weeklyScopedLimits
+		XCTAssertEqual(scoped.count, 1)
+		XCTAssertEqual(scoped.first?.scopeLabel, "Fable")
+		XCTAssertEqual(scoped.first?.percent, 1)
+		XCTAssertNotNil(scoped.first?.resetsAt)
+	}
+
+	/// A surface-scoped limit (no `scope.model`) must still render. `surface` has
+	/// only ever been observed as null, so accept both plausible encodings rather
+	/// than silently dropping the row if Anthropic ships one.
+	func testWeeklyScopedBySurface() throws {
+		let snap = try decode(UsageSnapshot.self, """
+		{
+		  "five_hour": { "utilization": 1 },
+		  "limits": [
+		    { "group": "weekly", "kind": "weekly_scoped", "percent": 12,
+		      "scope": { "model": null, "surface": { "display_name": "Claude Code" } } },
+		    { "group": "weekly", "kind": "weekly_scoped", "percent": 7,
+		      "scope": { "model": null, "surface": "Web" } }
+		  ]
+		}
+		""")
+		XCTAssertEqual(snap.weeklyScopedLimits.map(\.scopeLabel), ["Claude Code", "Web"])
+	}
+
+	/// Model wins when both are present, so a per-model bar isn't relabelled by surface.
+	func testScopedModelTakesPriorityOverSurface() throws {
+		let snap = try decode(UsageSnapshot.self, """
+		{
+		  "five_hour": { "utilization": 1 },
+		  "limits": [
+		    { "group": "weekly", "kind": "weekly_scoped", "percent": 3,
+		      "scope": { "model": { "display_name": "Fable" }, "surface": { "display_name": "Web" } } }
+		  ]
+		}
+		""")
+		XCTAssertEqual(snap.weeklyScopedLimits.first?.scopeLabel, "Fable")
+	}
+
+	/// An unrecognised scope shape falls back to a generic label — the bar must
+	/// never silently disappear just because we can't name it.
+	func testScopedLimitWithUnknownScopeStillRenders() throws {
+		let snap = try decode(UsageSnapshot.self, """
+		{
+		  "five_hour": { "utilization": 1 },
+		  "limits": [
+		    { "group": "weekly", "kind": "weekly_scoped", "percent": 9, "scope": null },
+		    { "group": "weekly", "kind": "weekly_scoped", "percent": 5,
+		      "scope": { "model": null, "surface": null } }
+		  ]
+		}
+		""")
+		XCTAssertEqual(snap.weeklyScopedLimits.map(\.scopeLabel), ["Other", "Other"])
+	}
+
+	/// `weekly_all` is the weekly bar itself and `session` is another group —
+	/// neither may leak into the sub-bars.
+	func testNonScopedLimitsAreNotSubBars() throws {
+		let snap = try decode(UsageSnapshot.self, """
+		{
+		  "five_hour": { "utilization": 1 },
+		  "limits": [
+		    { "group": "session", "kind": "session", "percent": 16, "scope": null },
+		    { "group": "weekly", "kind": "weekly_all", "percent": 4, "scope": null }
+		  ]
+		}
+		""")
+		XCTAssertTrue(snap.weeklyScopedLimits.isEmpty)
+	}
+
+	/// Accounts without per-model caps omit `limits` entirely — no sub-bars, no throw.
+	func testWeeklyScopedLimitsAbsent() throws {
+		let snap = try decode(UsageSnapshot.self,
+			#"{ "five_hour": { "utilization": 12 }, "seven_day": null, "seven_day_opus": null }"#)
+		XCTAssertTrue(snap.weeklyScopedLimits.isEmpty)
+	}
+
 	// MARK: - GET /organizations/{id}/overage_spend_limit
 
 	func testOverageDecodingLegacyFields() throws {
