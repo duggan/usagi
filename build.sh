@@ -159,7 +159,9 @@ if [ "${DMG:-}" = "1" ]; then
 		if hdiutil detach "$MOUNT_POINT" -quiet 2>/dev/null; then detached=1; break; fi
 		sleep 2
 	done
-	[ -n "$detached" ] || hdiutil detach "$MOUNT_POINT" -force
+	# The quiet retries can unmount the volume yet still exit non-zero, so only
+	# force-detach if it's genuinely still mounted — forcing a gone mount fails.
+	[ -n "$detached" ] || [ ! -d "$MOUNT_POINT" ] || hdiutil detach "$MOUNT_POINT" -force
 	rm -f "$DMG_PATH"
 	hdiutil convert "$TEMP_DMG" -format UDZO -imagekey zlib-level=9 -o "$DMG_PATH" -quiet
 	rm -f "$TEMP_DMG"
