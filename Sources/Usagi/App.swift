@@ -70,7 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 	@objc private func handleSignIn() { appState.presentSignIn() }
 	@objc private func handleSignOut() { appState.signOut() }
-	@objc private func handleRetry() { Task { await appState.refresh() } }
+	@objc private func handleRefresh() { Task { await appState.refresh(userInitiated: true) } }
 	@objc private func handleQuit() { NSApplication.shared.terminate(nil) }
 
 	@objc private func handleOpenSettings() {
@@ -103,6 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			_ = appState.phase
 			_ = appState.snapshot
 			_ = appState.showPercentInBars
+			_ = appState.isRefreshing
 		} onChange: { [weak self] in
 			Task { @MainActor [weak self] in
 				self?.updateMenuBarTitle()
@@ -126,6 +127,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		button.image = image
 		button.title = ""
 		button.setAccessibilityLabel(label)
+		// Dim while a refresh is in flight — a brief, deliberate blink that
+		// confirms "Refresh Now" (and the on-open refresh) actually did something.
+		button.alphaValue = appState.isRefreshing ? 0.55 : 1
 	}
 
 	/// VoiceOver text for the status item — a short summary of the current state.
@@ -397,15 +401,15 @@ extension AppDelegate: NSMenuDelegate {
 	func menuNeedsUpdate(_ menu: NSMenu) {
 		menu.removeAllItems()
 
-		// The usage bars (or a sign-in prompt / spinner / error) as a
-		// non-interactive header. A fresh hosting view each time keeps it simple;
-		// the SwiftUI content has no controls of its own.
+		// The usage bars (or a sign-in prompt / spinner / error) as a header.
+		// A fresh hosting view each time keeps it simple. Enabled so its one
+		// control — the ↻ refresh button — receives clicks; view-backed items
+		// don't dismiss the menu, so the refresh plays out in place.
 		let host = NSHostingView(rootView: MenuBarPopover(appState: appState))
 		host.layoutSubtreeIfNeeded()
 		host.frame.size = host.fittingSize
 		let header = NSMenuItem()
 		header.view = host
-		header.isEnabled = false
 		menu.addItem(header)
 
 		menu.addItem(.separator())
@@ -417,7 +421,7 @@ extension AppDelegate: NSMenuDelegate {
 		case .ready:
 			menu.addItem(actionItem("Sign Out", #selector(handleSignOut)))
 		case .error:
-			menu.addItem(actionItem("Try Again", #selector(handleRetry)))
+			menu.addItem(actionItem("Try Again", #selector(handleRefresh)))
 			menu.addItem(actionItem("Sign Out", #selector(handleSignOut)))
 		case .bootstrapping, .loading:
 			break

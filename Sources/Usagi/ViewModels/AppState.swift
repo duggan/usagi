@@ -21,6 +21,11 @@ final class AppState {
 	var snapshot: UsageSnapshot? = nil
 	var overage: OverageSpend? = nil
 	var lastRefresh: Date? = nil
+	/// True while a *user-initiated* refresh (↻ button, Try Again) is in flight —
+	/// drives the "Updating…" line in the menu header and the dimmed status item,
+	/// without disturbing `phase`. Background ticks and the refresh-on-open stay
+	/// silent: they should just work, not call for attention.
+	var isRefreshing = false
 	var refreshInterval: TimeInterval = 30 {
 		didSet {
 			UserDefaults.standard.set(refreshInterval, forKey: Self.refreshIntervalKey)
@@ -103,12 +108,15 @@ final class AppState {
 
 	// MARK: - Refresh
 
-	func refresh() async {
+	func refresh(userInitiated: Bool = false) async {
 		guard let key = SessionStore.read() else {
 			phase = .signedOut
 			menuBarTick &+= 1
 			return
 		}
+
+		if userInitiated { isRefreshing = true }
+		defer { if userInitiated { isRefreshing = false } }
 
 		do {
 			let org: Organization
